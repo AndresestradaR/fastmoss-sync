@@ -2,6 +2,7 @@
 import time
 import random
 import logging
+import json
 from typing import Optional
 import httpx
 
@@ -79,6 +80,8 @@ class FastMossClient:
         if min_commission is not None:
             params["crate"] = f"{min_commission},-1"
 
+        logger.debug(f"Request params: {params}")
+
         # Retry logic
         for attempt in range(MAX_RETRIES):
             try:
@@ -89,14 +92,31 @@ class FastMossClient:
 
                 data = response.json()
 
-                if data.get("code") != 0:
-                    logger.warning(f"FastMoss API error: {data}")
-                    return {"code": -1, "data": {"list": [], "total": 0}}
+                # Log raw response for debugging
+                code = data.get("code")
+                logger.debug(f"API response code: {code}")
 
+                # Check if we got products
+                products = data.get("data", {}).get("list", [])
+                total = data.get("data", {}).get("total", 0)
+
+                if products:
+                    # Log first product structure for debugging
+                    logger.debug(f"First product keys: {list(products[0].keys())}")
+                    logger.info(f"API returned {len(products)} products (total: {total})")
+                else:
+                    logger.warning(f"API returned empty list. Code: {code}, Response keys: {list(data.keys())}")
+                    # Log more details if empty
+                    if "msg" in data:
+                        logger.warning(f"API message: {data.get('msg')}")
+
+                # Return data regardless of code - let caller handle it
+                # Some valid responses may have code != 0
                 return data
 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error {e.response.status_code} on attempt {attempt + 1}")
+                logger.error(f"Response: {e.response.text[:500]}")
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(2 ** attempt)  # Exponential backoff
                 else:
@@ -108,6 +128,11 @@ class FastMossClient:
                     time.sleep(2 ** attempt)
                 else:
                     raise
+
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {e}")
+                logger.error(f"Raw response: {response.text[:500]}")
+                return {"code": -1, "data": {"list": [], "total": 0}}
 
         return {"code": -1, "data": {"list": [], "total": 0}}
 
