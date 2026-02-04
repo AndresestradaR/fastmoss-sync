@@ -38,6 +38,8 @@ class SupabaseClient:
             json=data,
             timeout=30,
         )
+        if not response.is_success:
+            logger.error(f"Supabase error response: {response.text}")
         response.raise_for_status()
         return response
 
