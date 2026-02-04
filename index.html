@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastMoss Products - Estrategas IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">🔥 Productos TikTok Shop</h1>
+
+        <!-- Filtros -->
+        <div class="flex gap-4 mb-6 flex-wrap">
+            <select id="categoryFilter" class="bg-gray-800 rounded px-4 py-2">
+                <option value="">Todas las categorías</option>
+                <option value="Belleza">Belleza</option>
+                <option value="Salud">Salud</option>
+                <option value="Juguetes">Juguetes</option>
+                <option value="Mascotas">Mascotas</option>
+                <option value="Bebés">Bebés</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Buscar producto..."
+                   class="bg-gray-800 rounded px-4 py-2 flex-1 min-w-[200px]">
+            <select id="sortBy" class="bg-gray-800 rounded px-4 py-2">
+                <option value="last_synced_at">Más recientes</option>
+                <option value="sold_count">Mayor ventas</option>
+                <option value="title">Alfabético</option>
+            </select>
+        </div>
+
+        <!-- Stats -->
+        <div id="stats" class="mb-6 text-gray-400"></div>
+
+        <!-- Grid de productos -->
+        <div id="productsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Productos se cargan aquí -->
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://papfcbiswvdgalfteujm.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_WVUzDgFTG0naCP8PJHc0kg_pT1dIXHf';
+
+        let allProducts = [];
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function loadProducts() {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/fastmoss_products?select=*&order=last_synced_at.desc`, {
+                headers: { 'apikey': SUPABASE_ANON_KEY }
+            });
+            allProducts = await res.json();
+            renderProducts(allProducts);
+        }
+
+        function renderProducts(products) {
+            const grid = document.getElementById('productsGrid');
+            const stats = document.getElementById('stats');
+
+            stats.textContent = `${products.length} productos encontrados`;
+
+            // Clear grid
+            grid.replaceChildren();
+
+            products.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-800 rounded-lg overflow-hidden hover:ring-2 hover:ring-orange-500 transition';
+
+                const img = document.createElement('img');
+                img.src = p.img || '';
+                img.alt = p.title || '';
+                img.className = 'w-full h-48 object-cover';
+
+                const content = document.createElement('div');
+                content.className = 'p-4';
+
+                const title = document.createElement('h3');
+                title.className = 'font-semibold text-sm mb-2 line-clamp-2';
+                title.textContent = p.title || '';
+
+                const meta = document.createElement('div');
+                meta.className = 'flex justify-between text-sm text-gray-400 mb-3';
+
+                const category = document.createElement('span');
+                category.textContent = p.category_l1 || 'Sin categoría';
+
+                const sales = document.createElement('span');
+                sales.textContent = `⭐ ${p.sold_count || 0} ventas`;
+
+                meta.appendChild(category);
+                meta.appendChild(sales);
+
+                const link = document.createElement('a');
+                link.href = p.detail_url || '#';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.className = 'block text-center bg-orange-500 hover:bg-orange-600 rounded py-2 text-sm font-medium';
+                link.textContent = 'Ver en FastMoss';
+
+                content.appendChild(title);
+                content.appendChild(meta);
+                content.appendChild(link);
+
+                card.appendChild(img);
+                card.appendChild(content);
+
+                grid.appendChild(card);
+            });
+        }
+
+        function filterProducts() {
+            const category = document.getElementById('categoryFilter').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const sortBy = document.getElementById('sortBy').value;
+
+            let filtered = allProducts.filter(p => {
+                const matchCategory = !category || p.category_l1 === category;
+                const matchSearch = !search || (p.title && p.title.toLowerCase().includes(search));
+                return matchCategory && matchSearch;
+            });
+
+            filtered.sort((a, b) => {
+                if (sortBy === 'sold_count') return (b.sold_count || 0) - (a.sold_count || 0);
+                if (sortBy === 'title') return (a.title || '').localeCompare(b.title || '');
+                return new Date(b.last_synced_at) - new Date(a.last_synced_at);
+            });
+
+            renderProducts(filtered);
+        }
+
+        document.getElementById('categoryFilter').addEventListener('change', filterProducts);
+        document.getElementById('searchInput').addEventListener('input', filterProducts);
+        document.getElementById('sortBy').addEventListener('change', filterProducts);
+
+        loadProducts();
+    </script>
+</body>
+</html>
