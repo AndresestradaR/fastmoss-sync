@@ -1,0 +1,122 @@
+"""FastMoss API client for TikTok Shop product data."""
+import time
+import random
+import logging
+from typing import Optional
+import httpx
+
+from config import REQUEST_DELAY, MAX_RETRIES, PAGE_SIZE
+
+logger = logging.getLogger(__name__)
+
+FASTMOSS_API_URL = "https://www.fastmoss.com/api/goods/V2/search"
+
+
+class FastMossClient:
+    """Client for FastMoss API with retry logic and rate limiting."""
+
+    def __init__(self):
+        self.client = httpx.Client(timeout=30.0)
+        self.last_request_time = 0
+
+    def _wait_for_rate_limit(self):
+        """Ensure minimum delay between requests."""
+        elapsed = time.time() - self.last_request_time
+        if elapsed < REQUEST_DELAY:
+            time.sleep(REQUEST_DELAY - elapsed)
+        self.last_request_time = time.time()
+
+    def search_products(
+        self,
+        region: str,
+        category_l1: str,
+        page: int = 1,
+        pagesize: int = PAGE_SIZE,
+        order: str = "2,2",  # Sales 7d descending
+        price_min: Optional[float] = None,
+        price_max: Optional[float] = None,
+        min_sales_7d: Optional[int] = None,
+        max_sales_7d: Optional[int] = None,
+        min_commission: Optional[float] = None,
+    ) -> dict:
+        """
+        Search products on FastMoss.
+
+        Args:
+            region: Country code (US, MX, BR, etc.)
+            category_l1: L1 category ID (14=Beauty, 25=Health, etc.)
+            page: Page number (1-indexed)
+            pagesize: Results per page (max 50)
+            order: Sort order (2,2 = sales 7d desc)
+            price_min: Minimum price USD
+            price_max: Maximum price USD
+            min_sales_7d: Minimum 7-day sales
+            max_sales_7d: Maximum 7-day sales (-1 for no limit)
+            min_commission: Minimum affiliate commission %
+
+        Returns:
+            API response dict with 'code' and 'data' keys
+        """
+        params = {
+            "page": page,
+            "pagesize": pagesize,
+            "order": order,
+            "region": region,
+            "l1_cid": category_l1,
+            "_time": int(time.time() * 1000),
+            "cnonce": random.randint(100000, 999999),
+        }
+
+        # Optional filters
+        if price_min is not None or price_max is not None:
+            price_range = f"{price_min or 0},{price_max or -1}"
+            params["price_amount"] = price_range
+
+        if min_sales_7d is not None or max_sales_7d is not None:
+            sales_range = f"{min_sales_7d or 0},{max_sales_7d or -1}"
+            params["day7_sold_count"] = sales_range
+
+        if min_commission is not None:
+            params["crate"] = f"{min_commission},-1"
+
+        # Retry logic
+        for attempt in range(MAX_RETRIES):
+            try:
+                self._wait_for_rate_limit()
+
+                response = self.client.get(FASTMOSS_API_URL, params=params)
+                response.raise_for_status()
+
+                data = response.json()
+
+                if data.get("code") != 0:
+                    logger.warning(f"FastMoss API error: {data}")
+                    return {"code": -1, "data": {"list": [], "total": 0}}
+
+                return data
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error {e.response.status_code} on attempt {attempt + 1}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    raise
+
+            except httpx.RequestError as e:
+                logger.error(f"Request error on attempt {attempt + 1}: {e}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise
+
+        return {"code": -1, "data": {"list": [], "total": 0}}
+
+    def close(self):
+        """Close the HTTP client."""
+        self.client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

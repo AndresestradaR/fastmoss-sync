@@ -1,0 +1,9 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python main.py"
+restartPolicyType = "never"
+
+[cron]
+schedule = "0 6 * * *"
