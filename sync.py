@@ -273,6 +273,18 @@ def run_sync():
                     logger.error(error_msg)
                     errors.append(error_msg)
 
+            # Deduplicate by product_id (same product may appear in multiple categories)
+            if region_products:
+                seen_ids = set()
+                unique_products = []
+                for p in region_products:
+                    pid = p.get("product_id")
+                    if pid and pid not in seen_ids:
+                        seen_ids.add(pid)
+                        unique_products.append(p)
+                logger.info(f"Deduplicated: {len(region_products)} -> {len(unique_products)} unique products")
+                region_products = unique_products
+
             # Upsert all products for this region
             if region_products:
                 try:
