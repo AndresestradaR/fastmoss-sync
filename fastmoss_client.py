@@ -23,11 +23,10 @@ class FastMossClient:
             "Accept": "application/json",
         }
 
-        # Add token authentication (try multiple methods)
+        # Add token authentication via fd_tk cookie
         if FASTMOSS_TOKEN:
-            headers["Cookie"] = f"fm_token={FASTMOSS_TOKEN}"
-            headers["token"] = FASTMOSS_TOKEN
-            logger.info("FastMoss token configured")
+            headers["Cookie"] = f"fd_tk={FASTMOSS_TOKEN}"
+            logger.info("FastMoss token configured (fd_tk cookie)")
         else:
             logger.warning("FASTMOSS_TOKEN not configured - requests may fail")
 
