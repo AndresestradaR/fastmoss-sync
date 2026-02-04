@@ -6,7 +6,7 @@ import json
 from typing import Optional
 import httpx
 
-from config import REQUEST_DELAY, MAX_RETRIES, PAGE_SIZE
+from config import REQUEST_DELAY, MAX_RETRIES, PAGE_SIZE, FASTMOSS_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,21 @@ class FastMossClient:
     """Client for FastMoss API with retry logic and rate limiting."""
 
     def __init__(self):
-        self.client = httpx.Client(timeout=30.0)
+        # Build headers with authentication
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+        }
+
+        # Add token authentication (try multiple methods)
+        if FASTMOSS_TOKEN:
+            headers["Cookie"] = f"fm_token={FASTMOSS_TOKEN}"
+            headers["token"] = FASTMOSS_TOKEN
+            logger.info("FastMoss token configured")
+        else:
+            logger.warning("FASTMOSS_TOKEN not configured - requests may fail")
+
+        self.client = httpx.Client(timeout=30.0, headers=headers)
         self.last_request_time = 0
 
     def _wait_for_rate_limit(self):

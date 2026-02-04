@@ -13,6 +13,9 @@ FASTMOSS_REGIONS = os.getenv("FASTMOSS_REGIONS", "US,MX").split(",")
 FASTMOSS_CATEGORIES = os.getenv("FASTMOSS_CATEGORIES", "14,25,9,16").split(",")
 SYNC_LIMIT_PER_REGION = int(os.getenv("SYNC_LIMIT_PER_REGION", "500"))
 
+# FastMoss authentication
+FASTMOSS_TOKEN = os.getenv("FASTMOSS_TOKEN", "")
+
 # API settings
 REQUEST_DELAY = 1.5  # Seconds between requests
 MAX_RETRIES = 3
