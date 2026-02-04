@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from supabase import create_client, Client
+import httpx
 
 from config import (
     SUPABASE_URL,
@@ -16,6 +16,30 @@ from config import (
 from fastmoss_client import FastMossClient
 
 logger = logging.getLogger(__name__)
+
+
+class SupabaseClient:
+    """Simple Supabase client using REST API directly."""
+
+    def __init__(self, url: str, key: str):
+        self.url = url.rstrip("/")
+        self.headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates",
+        }
+
+    def upsert(self, table: str, data: list) -> httpx.Response:
+        """Upsert data to Supabase table."""
+        response = httpx.post(
+            f"{self.url}/rest/v1/{table}",
+            headers=self.headers,
+            json=data,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response
 
 
 def safe_int(value, default=0) -> int:
@@ -135,7 +159,7 @@ def fetch_products_for_region_category(
     return products[:limit]
 
 
-def upsert_products(supabase: Client, products: List[dict], region: str) -> int:
+def upsert_products(supabase: SupabaseClient, products: List[dict], region: str) -> int:
     """Upsert products to Supabase."""
     if not products:
         logger.warning(f"No products to upsert for region {region}")
@@ -173,10 +197,7 @@ def upsert_products(supabase: Client, products: List[dict], region: str) -> int:
         for i in range(0, len(transformed), batch_size):
             batch = transformed[i:i + batch_size]
             try:
-                result = supabase.table("fastmoss_products").upsert(
-                    batch,
-                    on_conflict="product_id"
-                ).execute()
+                supabase.upsert("fastmoss_products", batch)
                 total_upserted += len(batch)
                 logger.info(f"  Upserted batch {i // batch_size + 1}: {len(batch)} products")
             except Exception as batch_error:
@@ -210,7 +231,7 @@ def run_sync():
         logger.error("Missing SUPABASE_URL or SUPABASE_KEY")
         raise ValueError("Supabase credentials not configured")
 
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    supabase = SupabaseClient(SUPABASE_URL, SUPABASE_KEY)
     total_synced = 0
     errors = []
 
