@@ -126,12 +126,15 @@ def fetch_products_for_region_category(
     category: str,
     limit: int,
 ) -> List[dict]:
-    """Fetch products for a specific region and category."""
+    """Fetch products for a specific region and category with pagination."""
+    import time
+
     products = []
     page = 1
-    pages_needed = (limit + PAGE_SIZE - 1) // PAGE_SIZE  # Ceiling division
+    products_per_page = 5  # FastMoss Basic plan returns 5 per page
+    pages_needed = (limit + products_per_page - 1) // products_per_page  # Ceiling division
 
-    logger.info(f"Fetching {region}/{category}: up to {limit} products ({pages_needed} pages)")
+    logger.info(f"Fetching {region}/{category}: target {limit} products (~{pages_needed} pages)")
 
     while len(products) < limit and page <= pages_needed:
         response = client.search_products(
@@ -144,18 +147,27 @@ def fetch_products_for_region_category(
         page_products = response.get("data", {}).get("product_list", [])
 
         if not page_products:
-            logger.info(f"No more products for {region}/{category} at page {page}")
+            logger.info(f"  Page {page}: no more products available")
             break
 
         products.extend(page_products)
         total = response.get("data", {}).get("total", 0)
-        logger.info(f"  Page {page}: got {len(page_products)} products (total available: {total})")
+        logger.info(f"  Page {page}/{pages_needed}: +{len(page_products)} products (accumulated: {len(products)}, available: {total})")
 
         # Log first product keys on first page for debugging
         if page == 1 and page_products:
-            logger.info(f"  Product fields available: {list(page_products[0].keys())}")
+            logger.debug(f"  Product fields: {list(page_products[0].keys())}")
+
+        # Check if we got less than expected (no more pages)
+        if len(page_products) < products_per_page:
+            logger.info(f"  Reached end of results at page {page}")
+            break
 
         page += 1
+
+        # Delay between pagination requests to avoid rate limiting
+        if page <= pages_needed and len(products) < limit:
+            time.sleep(1)
 
     # Trim to limit
     return products[:limit]
