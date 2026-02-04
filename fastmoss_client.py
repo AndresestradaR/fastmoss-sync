@@ -17,18 +17,30 @@ class FastMossClient:
     """Client for FastMoss API with retry logic and rate limiting."""
 
     def __init__(self):
-        # Build headers with authentication
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json",
-        }
-
-        # Add token authentication via fd_tk cookie
+        # Build headers to simulate full browser
         if FASTMOSS_TOKEN:
-            headers["Cookie"] = f"fd_tk={FASTMOSS_TOKEN}"
+            cookie = f"fd_tk={FASTMOSS_TOKEN}; region=US; NEXT_LOCALE=es"
             logger.info("FastMoss token configured (fd_tk cookie)")
         else:
+            cookie = "region=US; NEXT_LOCALE=es"
             logger.warning("FASTMOSS_TOKEN not configured - requests may fail")
+
+        headers = {
+            "Cookie": cookie,
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://www.fastmoss.com/es/products",
+            "Origin": "https://www.fastmoss.com",
+            "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Connection": "keep-alive",
+        }
 
         self.client = httpx.Client(timeout=30.0, headers=headers)
         self.last_request_time = 0
