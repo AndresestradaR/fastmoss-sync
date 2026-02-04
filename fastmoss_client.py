@@ -121,22 +121,21 @@ class FastMossClient:
                 code = data.get("code")
                 logger.debug(f"API response code: {code}")
 
-                # Check if we got products
-                products = data.get("data", {}).get("list", [])
+                # Check if we got products - field is "product_list" not "list"
+                # Ignore error codes - if product_list has data, use it
+                products = data.get("data", {}).get("product_list", [])
                 total = data.get("data", {}).get("total", 0)
 
                 if products:
                     # Log first product structure for debugging
                     logger.debug(f"First product keys: {list(products[0].keys())}")
-                    logger.info(f"API returned {len(products)} products (total: {total})")
+                    logger.info(f"Got {len(products)} products (code: {code}, total: {total})")
                 else:
-                    logger.warning(f"API returned empty list. Code: {code}, Response keys: {list(data.keys())}")
-                    # Log more details if empty
-                    if "msg" in data:
-                        logger.warning(f"API message: {data.get('msg')}")
+                    logger.warning(f"No products in response. Code: {code}, msg: {data.get('msg')}")
+                    # Log data keys for debugging
+                    logger.debug(f"Response data keys: {list(data.get('data', {}).keys())}")
 
-                # Return data regardless of code - let caller handle it
-                # Some valid responses may have code != 0
+                # Return data regardless of code - products may exist even with error codes
                 return data
 
             except httpx.HTTPStatusError as e:

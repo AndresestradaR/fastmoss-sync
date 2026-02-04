@@ -138,8 +138,8 @@ def fetch_products_for_region_category(
             page=page,
         )
 
-        # Get products from response - don't check code, just check if list exists
-        page_products = response.get("data", {}).get("list", [])
+        # Get products from response - field is "product_list", ignore error codes
+        page_products = response.get("data", {}).get("product_list", [])
 
         if not page_products:
             logger.info(f"No more products for {region}/{category} at page {page}")
