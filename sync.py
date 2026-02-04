@@ -27,13 +27,13 @@ class SupabaseClient:
             "apikey": key,
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates",
+            "Prefer": "return=minimal,resolution=merge-duplicates",
         }
 
     def upsert(self, table: str, data: list) -> httpx.Response:
         """Upsert data to Supabase table."""
         response = httpx.post(
-            f"{self.url}/rest/v1/{table}",
+            f"{self.url}/rest/v1/{table}?on_conflict=product_id",
             headers=self.headers,
             json=data,
             timeout=30,
