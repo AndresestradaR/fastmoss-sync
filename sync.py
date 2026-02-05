@@ -1,7 +1,9 @@
 """Sync logic for FastMoss to Supabase."""
 import logging
+import hashlib
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -17,12 +19,16 @@ from fastmoss_client import FastMossClient
 
 logger = logging.getLogger(__name__)
 
+# Image bucket name in Supabase Storage
+IMAGE_BUCKET = "product-images"
+
 
 class SupabaseClient:
     """Simple Supabase client using REST API directly."""
 
     def __init__(self, url: str, key: str):
         self.url = url.rstrip("/")
+        self.key = key
         self.headers = {
             "apikey": key,
             "Authorization": f"Bearer {key}",
@@ -42,6 +48,92 @@ class SupabaseClient:
             logger.error(f"Supabase error response: {response.text}")
         response.raise_for_status()
         return response
+
+    def upload_image(self, bucket: str, path: str, image_data: bytes, content_type: str = "image/jpeg") -> Optional[str]:
+        """
+        Upload image to Supabase Storage.
+
+        Returns the public URL if successful, None otherwise.
+        """
+        upload_headers = {
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+            "Content-Type": content_type,
+            "x-upsert": "true",  # Overwrite if exists
+        }
+
+        try:
+            response = httpx.post(
+                f"{self.url}/storage/v1/object/{bucket}/{path}",
+                headers=upload_headers,
+                content=image_data,
+                timeout=30,
+            )
+
+            if response.is_success:
+                # Return public URL
+                public_url = f"{self.url}/storage/v1/object/public/{bucket}/{path}"
+                return public_url
+            else:
+                logger.warning(f"Failed to upload image {path}: {response.status_code} - {response.text[:200]}")
+                return None
+
+        except Exception as e:
+            logger.warning(f"Error uploading image {path}: {e}")
+            return None
+
+
+def download_image(url: str) -> Optional[tuple[bytes, str]]:
+    """
+    Download image from URL with proper headers for FastMoss CDN.
+
+    Returns tuple of (image_data, content_type) or None if failed.
+    """
+    if not url:
+        return None
+
+    try:
+        response = httpx.get(
+            url,
+            headers={
+                "Referer": "https://www.fastmoss.com/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            },
+            timeout=15,
+            follow_redirects=True,
+        )
+
+        if response.is_success:
+            content_type = response.headers.get("content-type", "image/jpeg")
+            return (response.content, content_type)
+        else:
+            logger.debug(f"Failed to download image: {response.status_code}")
+            return None
+
+    except Exception as e:
+        logger.debug(f"Error downloading image from {url[:50]}...: {e}")
+        return None
+
+
+def get_image_filename(product_id: str, original_url: str) -> str:
+    """Generate a unique filename for the image based on product_id and URL hash."""
+    # Use product_id as primary identifier
+    # Add hash of original URL to handle cases where same product might have different images
+    url_hash = hashlib.md5(original_url.encode()).hexdigest()[:8]
+
+    # Determine extension from URL
+    parsed = urlparse(original_url)
+    path = parsed.path.lower()
+    if ".png" in path:
+        ext = "png"
+    elif ".webp" in path:
+        ext = "webp"
+    elif ".gif" in path:
+        ext = "gif"
+    else:
+        ext = "jpg"
+
+    return f"{product_id}_{url_hash}.{ext}"
 
 
 def safe_int(value, default=0) -> int:
@@ -193,6 +285,41 @@ def fetch_products_for_region_category(
     return products[:limit]
 
 
+def process_product_image(supabase: SupabaseClient, product: dict) -> str:
+    """
+    Download product image and upload to Supabase Storage.
+
+    Returns the new Supabase Storage URL, or the original URL if upload fails.
+    """
+    original_url = product.get("img", "")
+    product_id = product.get("product_id", "")
+
+    if not original_url or not product_id:
+        return original_url
+
+    # Skip if already a Supabase URL
+    if "supabase" in original_url:
+        return original_url
+
+    # Download image
+    result = download_image(original_url)
+    if not result:
+        logger.debug(f"Could not download image for product {product_id}")
+        return original_url
+
+    image_data, content_type = result
+
+    # Generate filename and upload
+    filename = get_image_filename(product_id, original_url)
+    new_url = supabase.upload_image(IMAGE_BUCKET, filename, image_data, content_type)
+
+    if new_url:
+        logger.debug(f"Uploaded image for {product_id}: {filename}")
+        return new_url
+    else:
+        return original_url
+
+
 def upsert_products(supabase: SupabaseClient, products: List[dict], region: str) -> int:
     """Upsert products to Supabase."""
     if not products:
@@ -234,6 +361,23 @@ def upsert_products(supabase: SupabaseClient, products: List[dict], region: str)
     if not transformed:
         logger.warning(f"No valid products after transformation for region {region}")
         return 0
+
+    # Process images - download from FastMoss and upload to Supabase Storage
+    logger.info(f"Processing images for {len(transformed)} products...")
+    images_uploaded = 0
+    images_failed = 0
+
+    for product in transformed:
+        original_img = product["img"]
+        new_img = process_product_image(supabase, product)
+        product["img"] = new_img
+
+        if new_img != original_img and "supabase" in new_img:
+            images_uploaded += 1
+        elif original_img and "supabase" not in new_img:
+            images_failed += 1
+
+    logger.info(f"  Images: {images_uploaded} uploaded, {images_failed} failed/skipped")
 
     logger.info(f"Upserting {len(transformed)} products to Supabase")
 
