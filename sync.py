@@ -59,6 +59,11 @@ def safe_float(value, default=0.0) -> float:
     if value is None:
         return default
     try:
+        # Handle price strings like "$27.35" or "27.35"
+        if isinstance(value, str):
+            # Remove currency symbols and commas
+            cleaned = value.replace("$", "").replace(",", "").strip()
+            return float(cleaned) if cleaned else default
         return float(value)
     except (ValueError, TypeError):
         return default
