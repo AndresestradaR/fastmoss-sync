@@ -71,11 +71,20 @@ def safe_str(value, default="") -> str:
     return str(value)
 
 
+def get_first_from_array(value, default="") -> str:
+    """Extract first element from array or return value as string."""
+    if value is None:
+        return default
+    if isinstance(value, list):
+        return str(value[0]) if value else default
+    return str(value)
+
+
 def transform_product(product: dict, region: str) -> dict:
     """Transform FastMoss product to Supabase schema."""
     try:
-        # Handle commission_rate - comes as "13%" string, keep as string
-        commission_rate = product.get("commission_rate", "")
+        # Handle commission_rate - API uses "crate" field, comes as "13%" string
+        commission_rate = product.get("crate") or product.get("commission_rate") or ""
         if commission_rate is None:
             commission_rate = ""
         commission_rate = str(commission_rate)
@@ -85,6 +94,12 @@ def transform_product(product: dict, region: str) -> dict:
 
         # Handle category_id - may be category_id or category_l1_id
         category_l1_id = product.get("category_id") or product.get("category_l1_id") or ""
+
+        # Handle categories - API returns category_name_l1, category_name_l2, category_name_l3 as ARRAYS
+        # We need to extract the first element from each array
+        category_l1 = get_first_from_array(product.get("category_name_l1") or product.get("category_l1"))
+        category_l2 = get_first_from_array(product.get("category_name_l2") or product.get("category_l2"))
+        category_l3 = get_first_from_array(product.get("category_name_l3") or product.get("category_l3"))
 
         transformed = {
             "product_id": safe_str(product.get("product_id")),
@@ -98,9 +113,9 @@ def transform_product(product: dict, region: str) -> dict:
             "day28_sold_count": safe_int(product.get("day28_sold_count")),
             "sale_amount": safe_float(product.get("sale_amount")),
             "day7_sale_amount": safe_float(product.get("day7_sale_amount")),
-            "category_l1": safe_str(product.get("category_l1")),
-            "category_l2": safe_str(product.get("category_l2")),
-            "category_l3": safe_str(product.get("category_l3")),
+            "category_l1": category_l1,
+            "category_l2": category_l2,
+            "category_l3": category_l3,
             "category_l1_id": safe_str(category_l1_id),
             "shop_name": safe_str(product.get("shop_name")),
             "shop_id": safe_str(product.get("shop_id")),
@@ -180,6 +195,24 @@ def upsert_products(supabase: SupabaseClient, products: List[dict], region: str)
         return 0
 
     logger.info(f"Transforming {len(products)} products for region {region}")
+
+    # Log raw product sample BEFORE transformation for debugging
+    if products:
+        sample = products[0]
+        logger.info("=" * 50)
+        logger.info("RAW PRODUCT SAMPLE (before transform):")
+        logger.info(f"  Keys: {list(sample.keys())}")
+        logger.info(f"  sold_count: {sample.get('sold_count')}")
+        logger.info(f"  day7_sold_count: {sample.get('day7_sold_count')}")
+        logger.info(f"  price: {sample.get('price')}")
+        logger.info(f"  product_rating: {sample.get('product_rating')}")
+        logger.info(f"  relate_author_count: {sample.get('relate_author_count')}")
+        logger.info(f"  crate: {sample.get('crate')}")
+        logger.info(f"  commission_rate: {sample.get('commission_rate')}")
+        logger.info(f"  category_name_l1: {sample.get('category_name_l1')}")
+        logger.info(f"  category_l1: {sample.get('category_l1')}")
+        logger.info(f"  shop_name: {sample.get('shop_name')}")
+        logger.info("=" * 50)
 
     transformed = []
     for i, p in enumerate(products):
